@@ -4,12 +4,17 @@
 #include <memory>
 #include <filesystem>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include "config_reader.h"
 #include "depth_reader.h"
 #include "mesh_exporter.h"
 #include "opengl_visualizer.h"
 #include "bmp_saver.h"
 
+namespace fs = std::filesystem;
 namespace fs = std::filesystem;
 
 void createOutputDirectory(const std::string& dir) {
@@ -21,31 +26,46 @@ void createOutputDirectory(const std::string& dir) {
 }
 
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    SetConsoleOutputCP(65001);
+    SetConsoleCP(65001);
+#endif
+
     setlocale(LC_ALL, "Russian");
 
-    std::cout << "========================================\n";
-    std::cout << "Лабораторная работа №4\n";
-    std::cout << "Формирование изображения трехмерной поверхности\n";
-    std::cout << "Вариант 10: C++, модели: Ламберта, Фонга-Блинна, Торенса-Сперроу\n";
-    std::cout << "========================================\n\n";
+    std::cout << "========================================" << std::endl;
+    std::cout << "Лабораторная работа №4" << std::endl;
+    std::cout << "Формирование изображения трехмерной поверхности" << std::endl;
+    std::cout << "Вариант 10: C++, модели: Ламберта, Фонга-Блинна, Торренса-Сперроу" << std::endl;
+    std::cout << "========================================\n" << std::endl;
 
-    // 1. Чтение конфигурации
-    std::cout << "1. Чтение конфигурации...\n";
+    // 1. Проверка аргументов командной строки
+    if (argc < 2) {
+        std::cerr << "Ошибка: Не указан JSON файл конфигурации" << std::endl;
+        std::cerr << "Использование: " << argv[0] << " <config.json>" << std::endl;
+        std::cerr << "Пример: " << argv[0] << " config.json" << std::endl;
+        std::cerr << "Пример: " << argv[0] << " config_lambert.json" << std::endl;
+        std::cerr << "Пример: " << argv[0] << " config_phong.json" << std::endl;
+        return -1;
+    }
+
+    // 2. Чтение конфигурации из JSON файла
+    std::cout << "1. Чтение конфигурации из файла: " << argv[1] << std::endl;
     Config config;
     try {
-        config = ConfigReader::readConfig("resources/config.json");
-        ConfigReader::printConfig(config);
+        config = ConfigReader::readConfig(argv[1]); 
+        ConfigReader::printConfig(config);  
     }
     catch (const std::exception& e) {
         std::cerr << "Ошибка чтения конфигурации: " << e.what() << std::endl;
         return -1;
     }
 
-    // 2. Создание выходной директории
+    // 3. Создание выходной директории
     createOutputDirectory(config.output_dir);
 
-    // 3. Чтение карты глубины
-    std::cout << "\n2. Чтение карты глубины...\n";
+    // 4. Чтение карты глубины
+    std::cout << "\n2. Чтение карты глубины..." << std::endl;
     DepthReader reader;
     if (!reader.readDepthMap(config.depth_map_file)) {
         std::cerr << "Ошибка при чтении карты глубины!" << std::endl;
@@ -56,52 +76,51 @@ int main(int argc, char** argv) {
     std::cout << "Размер карты глубины: " << reader.getWidth()
         << "x" << reader.getHeight() << std::endl;
 
-    // 4. Сохранение карты глубины как BMP (для проверки)
-    std::cout << "\n3. Сохранение карты глубины как изображения...\n";
+    // 5. Сохранение карты глубины как BMP
+    std::cout << "\n3. Сохранение карты глубины как изображения..." << std::endl;
     std::string depthBMP = config.output_dir + "/depth_map.bmp";
     if (BMPSaver::saveDepthMapAsBMP(depthData, depthBMP)) {
         std::cout << "Карта глубины сохранена: " << depthBMP << std::endl;
     }
 
-    // 5. Экспорт в разные форматы
-    std::cout << "\n4. Экспорт 3D модели...\n";
-
-    std::vector<std::unique_ptr<MeshExporter>> exporters;
+    // 6. Экспорт в разные форматы
+    std::cout << "\n4. Экспорт 3D модели..." << std::endl;
 
     for (const auto& format : config.output_formats) {
-        if (format == "obj") {
-            exporters.push_back(std::make_unique<OBJExporter>());
+        std::unique_ptr<MeshExporter> exporter;
+
+        if (format == "obj" || format == "OBJ") {
+            exporter = std::make_unique<OBJExporter>();
         }
-        else if (format == "stl") {
-            exporters.push_back(std::make_unique<STLExporter>());
+        else if (format == "stl" || format == "STL") {
+            exporter = std::make_unique<STLExporter>();
         }
-        else if (format == "ply") {
-            exporters.push_back(std::make_unique<PLYExporter>());
+        else if (format == "ply" || format == "PLY") {
+            exporter = std::make_unique<PLYExporter>();
         }
         else {
             std::cerr << "Неизвестный формат: " << format << std::endl;
+            continue;
         }
-    }
 
-    for (auto& exporter : exporters) {
         std::string outputFile = config.output_dir + "/model." + exporter->getFileExtension();
-        std::cout << "Экспорт в " << exporter->getFormatName() << "...\n";
+        std::cout << "Экспорт в " << exporter->getFormatName() << "..." << std::endl;
 
         if (exporter->exportMesh(depthData, outputFile, config.scale)) {
-            std::cout << "  Успешно: " << outputFile << "\n";
+            std::cout << "  Успешно: " << outputFile << std::endl;
         }
         else {
             std::cerr << "  Ошибка экспорта в " << exporter->getFormatName() << std::endl;
         }
     }
 
-    // 6. Визуализация в OpenGL
-    std::cout << "\n5. Запуск OpenGL визуализации...\n";
+    // 7. Визуализация в OpenGL
+    std::cout << "\n5. Запуск OpenGL визуализации..." << std::endl;
     std::cout << "Используется модель отражения: ";
     switch (config.reflection_model) {
-    case 0: std::cout << "Ламберт\n"; break;
-    case 1: std::cout << "Фонга-Блинна\n"; break;
-    case 2: std::cout << "Торенса-Сперроу\n"; break;
+    case 0: std::cout << "Ламберт" << std::endl; break;
+    case 1: std::cout << "Фонга-Блинн" << std::endl; break;
+    case 2: std::cout << "Торренса-Сперроу" << std::endl; break;
     }
 
     // Инициализация OpenGL
