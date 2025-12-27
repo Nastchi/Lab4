@@ -77,7 +77,7 @@ Visual Studio 2019/2022 с поддержкой C++17
 
 Компиляция:
 ```
-l /EHsc /std:c++17 /I. /I"freeglut/include" Lab3DepthMapConverter.cpp depth_reader.cpp config_reader.cpp opengl_visualizer.cpp bmp_saver.cpp lighting_model.cpp mesh_exporter.cpp obj_writer.cpp ply_exporter.cpp stl_exporter.cpp reflection_models.cpp /link "freeglut/lib/x64/freeglut.lib" opengl32.lib glu32.lib /out:Lab4Demo.exe
+cl /EHsc /std:c++17 /I. /I"freeglut/include" Lab3DepthMapConverter.cpp depth_reader.cpp config_reader.cpp opengl_visualizer.cpp bmp_saver.cpp lighting_model.cpp mesh_exporter.cpp obj_writer.cpp ply_exporter.cpp stl_exporter.cpp reflection_models.cpp /link "freeglut/lib/x64/freeglut.lib" opengl32.lib glu32.lib /out:Lab4Demo.exe
 ```
 Запуск:
 ```
