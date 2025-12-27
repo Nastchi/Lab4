@@ -14,26 +14,56 @@
 Программа настраивается через файл `resources/config.json`:
 
 ```json
-depth_map_file: DepthMap_10.dat            # Файл карты глубины
-output_formats: obj,stl,ply                # Форматы экспорта
-output_dir: output                         # Директория для выходных файлов
-light_direction: (1.0,1.0,1.0)            # Направление света
-light_intensity: 1.0                       # Интенсивность света
-light_color: (1.0,1.0,1.0)                # Цвет света
-camera_position: (0.0,0.0,5.0)            # Позиция камеры
-camera_target: (0.0,0.0,0.0)              # Цель камеры
-camera_up: (0.0,1.0,0.0)                  # Вектор "вверх" камеры
-fov: 45.0                                  # Поле зрения
-projection_type: perspective              # Тип проекции
-reflection_model: 1                        # Модель отражения
-material_shininess: 32.0                   # Блеск материала
-material_color: (0.7,0.7,0.8)             # Цвет материала
-image_output: output/rendered_image.bmp   # Выходное изображение
-image_width: 1024                         # Ширина изображения
-image_height: 768                         # Высота изображения
-scale: 1.0                                # Масштаб модели
-show_axes: true                           # Показывать оси
-wireframe_mode: false                     # Режим каркаса
+{
+  "depthMap": {
+    "filename": "DepthMap_10.dat"
+  },
+  "output": {
+    "directory": "output",
+    "formats": ["ply", "obj", "stl"],
+    "exportFilename": "model.ply"
+  },
+  "light": {
+    "direction": [0.5, 0.7, 0.3],
+    "intensity": 2.0,
+    "ambientIntensity": 0.2
+  },
+  "viewer": {
+    "position": [100, 100, 100]
+  },
+  "reflectionModel": "torrance-sparrow",
+  "material": {
+    "color": [0.6, 0.7, 0.9],
+    "shininess": 32.0
+  },
+  "mesh": {
+    "scaleZ": 0.5
+  },
+  "image": {
+    "output": "render.bmp",
+    "width": 1024,
+    "height": 768
+  },
+  "display": {
+    "wireframeMode": false,
+    "showAxes": true
+  },
+  "preset": "torrance_ceramic",
+  
+  "lambert": {
+    "diffuse": 0.8
+  },
+  "phong": {
+    "shininess": 32.0,
+    "specularStrength": 0.5
+  },
+  "torrance": {
+    "roughness": 0.3,
+    "metalness": 0.0,
+    "reflectance": 0.04,
+    "ior": 1.5
+  }
+}
 ```
 ### Модели отражения:
 0 - Модель Ламберта
@@ -47,12 +77,7 @@ Visual Studio 2019/2022 с поддержкой C++17
 
 Компиляция:
 ```
-cl /EHsc /std:c++17 /I. /Iinclude /Ifreeglut\include ^
-   Lab3DepthMapConverter.cpp ^
-   depth_reader.cpp mesh_exporter.cpp stl_exporter.cpp ply_exporter.cpp ^
-   bmp_saver.cpp opengl_visualizer.cpp reflection_models.cpp config_reader.cpp ^
-   /link freeglut\lib\x64\freeglut.lib opengl32.lib glu32.lib ^
-   /out:Lab4.exe
+l /EHsc /std:c++17 /I. /I"freeglut/include" Lab3DepthMapConverter.cpp depth_reader.cpp config_reader.cpp opengl_visualizer.cpp bmp_saver.cpp lighting_model.cpp mesh_exporter.cpp obj_writer.cpp ply_exporter.cpp stl_exporter.cpp reflection_models.cpp /link "freeglut/lib/x64/freeglut.lib" opengl32.lib glu32.lib /out:Lab4Demo.exe
 ```
 Запуск:
 ```
