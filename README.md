@@ -81,5 +81,5 @@ l /EHsc /std:c++17 /I. /I"freeglut/include" Lab3DepthMapConverter.cpp depth_read
 ```
 Запуск:
 ```
-Lab4.exe
+Lab4Demo.exe
 ```
