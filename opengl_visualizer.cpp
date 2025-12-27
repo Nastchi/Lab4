@@ -1,4 +1,4 @@
-﻿#ifdef _WIN32
+﻿﻿#ifdef _WIN32
 #include <windows.h>
 #endif
 
@@ -25,24 +25,38 @@ float OpenGLVisualizer::zoom = 1.0f;
 bool OpenGLVisualizer::showAxes = true;
 bool OpenGLVisualizer::wireframeMode = false;
 
+// Новые переменные для управления видом
+float OpenGLVisualizer::cameraX = 0.0f;
+float OpenGLVisualizer::cameraY = 0.0f;
+float OpenGLVisualizer::cameraZ = 5.0f;
+float OpenGLVisualizer::lookAtX = 0.0f;
+float OpenGLVisualizer::lookAtY = 0.0f;
+float OpenGLVisualizer::lookAtZ = 0.0f;
+float OpenGLVisualizer::upX = 0.0f;
+float OpenGLVisualizer::upY = 1.0f;
+float OpenGLVisualizer::upZ = 0.0f;
+
+int OpenGLVisualizer::windowWidth = 1020;
+int OpenGLVisualizer::windowHeight = 820;
+
 void OpenGLVisualizer::display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
 
-    gluLookAt(0, 3, 2 * zoom,
-        0, 0, 0,
-        0, 2, 0);
+    // Используем камеру как в Python примере
+    gluLookAt(cameraX, cameraY, cameraZ,
+        lookAtX, lookAtY, lookAtZ,
+        upX, upY, upZ);
 
     glRotatef(rotationX, 1, 0, 0);
     glRotatef(rotationY, 0, 1, 0);
-    glScalef(0.1f, 0.1f, 0.1f);
 
     if (showAxes) {
         drawAxes();
     }
 
     if (!depthData.empty()) {
-        drawDepthMapMesh();
+        drawDepthMapAsQuads();
     }
 
     glutSwapBuffers();
@@ -74,16 +88,7 @@ void OpenGLVisualizer::drawAxes() {
     glEnable(GL_LIGHTING);
 }
 
-void OpenGLVisualizer::drawDepthMapMesh() {
-    if (wireframeMode) {
-        drawWireframe();
-    }
-    else {
-        drawSolid();
-    }
-}
-
-void OpenGLVisualizer::drawSolid() {
+void OpenGLVisualizer::drawDepthMapAsQuads() {
     if (depthData.empty() || depthData[0].empty()) {
         return;
     }
@@ -95,256 +100,159 @@ void OpenGLVisualizer::drawSolid() {
         return;
     }
 
-    vector<vector<float>> normals(height * width, vector<float>(3, 0.0f));
-    calculateNormals(normals);
+    // Находим максимальную глубину для масштабирования
+    double maxDepth = 1.0;
+    for (int i = 0; i < height; ++i) {
+        for (int j = 0; j < width; ++j) {
+            if (depthData[i][j] > maxDepth) {
+                maxDepth = depthData[i][j];
+            }
+        }
+    }
+    if (maxDepth == 0) maxDepth = 1.0;
 
-    // Используем конфигурацию для цвета материала
-    GLfloat materialColor[] = {
-        currentConfig.material_color.x,
-        currentConfig.material_color.y,
-        currentConfig.material_color.z,
-        1.0f
-    };
+    float scaleFactor = 200.0f; // Как в Python примере
 
-    GLfloat materialSpecular[] = { 0.3f, 0.3f, 0.3f, 1.0f };
+    if (wireframeMode) {
+        glDisable(GL_LIGHTING);
+        glColor3f(0.3f, 0.6f, 1.0f);
+        glLineWidth(1.0f);
+        glBegin(GL_LINE_LOOP);
+    }
+    else {
+        glBegin(GL_QUADS); // Используем QUADS как в Python примере
+    }
 
-    glMaterialfv(GL_FRONT, GL_DIFFUSE, materialColor);
-    glMaterialfv(GL_FRONT, GL_SPECULAR, materialSpecular);
-    GLfloat shininess[] = { currentConfig.phong_shininess };
-    glMaterialfv(GL_FRONT, GL_SHININESS, shininess);
-
-    // Рисуем треугольники
-    glBegin(GL_TRIANGLES);
-    for (int i = 0; i < height - 1; i++) {
-        for (int j = 0; j < width - 1; j++) {
-            // Пропускаем треугольники, содержащие точки с нулевой глубиной (фон)
+    for (int i = 0; i < height - 1; ++i) {
+        for (int j = 0; j < width - 1; ++j) {
+            // Пропускаем точки с нулевой глубиной (фон)
             if (depthData[i][j] <= 0.0 || depthData[i][j + 1] <= 0.0 ||
                 depthData[i + 1][j] <= 0.0 || depthData[i + 1][j + 1] <= 0.0) {
                 continue;
             }
 
-            // Проверяем границы для нормалей
-            int idx1 = i * width + j;
-            int idx2 = i * width + j + 1;
-            int idx3 = (i + 1) * width + j;
-            int idx4 = (i + 1) * width + j + 1;
+            // Координаты вершин как в Python примере
+            float v1x = (j - width / 2.0f) / width;
+            float v1y = (height / 2.0f - i) / height;
+            float v1z = -static_cast<float>(depthData[i][j]) / maxDepth;
 
-            if (idx1 >= normals.size() || idx2 >= normals.size() ||
-                idx3 >= normals.size() || idx4 >= normals.size()) {
-                continue;
+            float v2x = ((j + 1) - width / 2.0f) / width;
+            float v2y = (height / 2.0f - i) / height;
+            float v2z = -static_cast<float>(depthData[i][j + 1]) / maxDepth;
+
+            float v3x = ((j + 1) - width / 2.0f) / width;
+            float v3y = (height / 2.0f - (i + 1)) / height;
+            float v3z = -static_cast<float>(depthData[i + 1][j + 1]) / maxDepth;
+
+            float v4x = (j - width / 2.0f) / width;
+            float v4y = (height / 2.0f - (i + 1)) / height;
+            float v4z = -static_cast<float>(depthData[i + 1][j]) / maxDepth;
+
+            // Масштабируем как в Python примере
+            v1x *= scaleFactor; v1y *= scaleFactor; v1z *= scaleFactor;
+            v2x *= scaleFactor; v2y *= scaleFactor; v2z *= scaleFactor;
+            v3x *= scaleFactor; v3y *= scaleFactor; v3z *= scaleFactor;
+            v4x *= scaleFactor; v4y *= scaleFactor; v4z *= scaleFactor;
+
+            // Вычисляем нормаль
+            float normal[3];
+            calculateQuadNormal(v1x, v1y, v1z, v2x, v2y, v2z,
+                v3x, v3y, v3z, v4x, v4y, v4z,
+                normal[0], normal[1], normal[2]);
+
+            if (!wireframeMode) {
+                // Устанавливаем материал
+                GLfloat materialColor[] = {
+                    currentConfig.material_color.x,
+                    currentConfig.material_color.y,
+                    currentConfig.material_color.z,
+                    1.0f
+                };
+                glMaterialfv(GL_FRONT, GL_DIFFUSE, materialColor);
+
+                // Нормаль для освещения
+                glNormal3f(normal[0], normal[1], normal[2]);
             }
 
-            // Координаты вершин
-            double x1 = (j - width / 2.0) * 0.1 * currentConfig.scale;
-            double z1 = (i - height / 2.0) * 0.1 * currentConfig.scale;
-            double y1 = depthData[i][j] * 0.05 * currentConfig.scale;
-
-            double x2 = (j + 1 - width / 2.0) * 0.1 * currentConfig.scale;
-            double z2 = (i - height / 2.0) * 0.1 * currentConfig.scale;
-            double y2 = depthData[i][j + 1] * 0.05 * currentConfig.scale;
-
-            double x3 = (j - width / 2.0) * 0.1 * currentConfig.scale;
-            double z3 = (i + 1 - height / 2.0) * 0.1 * currentConfig.scale;
-            double y3 = depthData[i + 1][j] * 0.05 * currentConfig.scale;
-
-            double x4 = (j + 1 - width / 2.0) * 0.1 * currentConfig.scale;
-            double z4 = (i + 1 - height / 2.0) * 0.1 * currentConfig.scale;
-            double y4 = depthData[i + 1][j + 1] * 0.05 * currentConfig.scale;
-
-            // Первый треугольник
-            glNormal3f(normals[idx1][0], normals[idx1][1], normals[idx1][2]);
-            glVertex3f(x1, y1, z1);
-
-            glNormal3f(normals[idx2][0], normals[idx2][1], normals[idx2][2]);
-            glVertex3f(x2, y2, z2);
-
-            glNormal3f(normals[idx3][0], normals[idx3][1], normals[idx3][2]);
-            glVertex3f(x3, y3, z3);
-
-            // Второй треугольник
-            glNormal3f(normals[idx2][0], normals[idx2][1], normals[idx2][2]);
-            glVertex3f(x2, y2, z2);
-
-            glNormal3f(normals[idx4][0], normals[idx4][1], normals[idx4][2]);
-            glVertex3f(x4, y4, z4);
-
-            glNormal3f(normals[idx3][0], normals[idx3][1], normals[idx3][2]);
-            glVertex3f(x3, y3, z3);
+            // Рисуем вершины
+            glVertex3f(v1x, v1y, v1z);
+            glVertex3f(v2x, v2y, v2z);
+            glVertex3f(v3x, v3y, v3z);
+            glVertex3f(v4x, v4y, v4z);
         }
     }
-    glEnd();
-}
 
-void OpenGLVisualizer::drawWireframe() {
-    if (depthData.empty() || depthData[0].empty()) {
-        return;
-    }
-
-    int height = depthData.size();
-    int width = depthData[0].size();
-
-    glDisable(GL_LIGHTING);
-    glColor3f(0.3f, 0.6f, 1.0f);
-    glLineWidth(1.0f);
-
-    glBegin(GL_LINES);
-    for (int i = 0; i < height - 1; i++) {
-        for (int j = 0; j < width - 1; j++) {
-            // Пропускаем линии, содержащие точки с нулевой глубиной
-            if (depthData[i][j] <= 0.0 || depthData[i][j + 1] <= 0.0) {
-                continue;
-            }
-
-            double x1 = (j - width / 2.0) * 0.1 * currentConfig.scale;
-            double z1 = (i - height / 2.0) * 0.1 * currentConfig.scale;
-            double y1 = depthData[i][j] * 0.05 * currentConfig.scale;
-
-            double x2 = (j + 1 - width / 2.0) * 0.1 * currentConfig.scale;
-            double z2 = (i - height / 2.0) * 0.1 * currentConfig.scale;
-            double y2 = depthData[i][j + 1] * 0.05 * currentConfig.scale;
-
-            glVertex3f(x1, y1, z1);
-            glVertex3f(x2, y2, z2);
-
-            // Пропускаем вертикальные линии с нулевой глубиной
-            if (depthData[i][j] <= 0.0 || depthData[i + 1][j] <= 0.0) {
-                continue;
-            }
-
-            double x3 = (j - width / 2.0) * 0.1 * currentConfig.scale;
-            double z3 = (i + 1 - height / 2.0) * 0.1 * currentConfig.scale;
-            double y3 = depthData[i + 1][j] * 0.05 * currentConfig.scale;
-
-            glVertex3f(x1, y1, z1);
-            glVertex3f(x3, y3, z3);
-        }
-    }
     glEnd();
 
-    glEnable(GL_LIGHTING);
-}
-
-void OpenGLVisualizer::calculateNormals(vector<vector<float>>& normals) {
-    if (depthData.empty() || depthData[0].empty()) {
-        return;
-    }
-
-    int height = depthData.size();
-    int width = depthData[0].size();
-
-    for (int i = 0; i < height * width; i++) {
-        normals[i] = { 0.0f, 1.0f, 0.0f };
-    }
-
-    for (int i = 0; i < height - 1; i++) {
-        for (int j = 0; j < width - 1; j++) {
-            if (depthData[i][j] <= 0.0 && depthData[i][j + 1] <= 0.0 &&
-                depthData[i + 1][j] <= 0.0 && depthData[i + 1][j + 1] <= 0.0) {
-                continue;
-            }
-
-            // Рассчитываем нормали для каждого треугольника отдельно
-            vector<vector<float>> triangleNormals;
-
-            // Треугольник 1: (i,j) - (i,j+1) - (i+1,j)
-            if (depthData[i][j] > 0.0 && depthData[i][j + 1] > 0.0 && depthData[i + 1][j] > 0.0) {
-                float nx, ny, nz;
-                calculateTriangleNormal(i, j, i, j + 1, i + 1, j, nx, ny, nz);
-                triangleNormals.push_back({ nx, ny, nz });
-            }
-
-            // Треугольник 2: (i,j+1) - (i+1,j+1) - (i+1,j)
-            if (depthData[i][j + 1] > 0.0 && depthData[i + 1][j + 1] > 0.0 && depthData[i + 1][j] > 0.0) {
-                float nx, ny, nz;
-                calculateTriangleNormal(i, j + 1, i + 1, j + 1, i + 1, j, nx, ny, nz);
-                triangleNormals.push_back({ nx, ny, nz });
-            }
-
-            // Накопление нормалей для вершин
-            for (const auto& normal : triangleNormals) {
-                int idx1 = i * width + j;
-                int idx2 = i * width + j + 1;
-                int idx3 = (i + 1) * width + j;
-                int idx4 = (i + 1) * width + j + 1;
-
-                if (depthData[i][j] > 0.0 && idx1 < normals.size()) {
-                    normals[idx1][0] += normal[0]; normals[idx1][1] += normal[1]; normals[idx1][2] += normal[2];
-                }
-                if (depthData[i][j + 1] > 0.0 && idx2 < normals.size()) {
-                    normals[idx2][0] += normal[0]; normals[idx2][1] += normal[1]; normals[idx2][2] += normal[2];
-                }
-                if (depthData[i + 1][j] > 0.0 && idx3 < normals.size()) {
-                    normals[idx3][0] += normal[0]; normals[idx3][1] += normal[1]; normals[idx3][2] += normal[2];
-                }
-                if (depthData[i + 1][j + 1] > 0.0 && idx4 < normals.size()) {
-                    normals[idx4][0] += normal[0]; normals[idx4][1] += normal[1]; normals[idx4][2] += normal[2];
-                }
-            }
-        }
-    }
-
-    // Нормализация накопленных нормалей
-    for (int i = 0; i < height * width; i++) {
-        if (depthData[i / width][i % width] > 0.0) {
-            float length = sqrt(normals[i][0] * normals[i][0] +
-                normals[i][1] * normals[i][1] +
-                normals[i][2] * normals[i][2]);
-
-            if (length > 0.0001f) {
-                normals[i][0] /= length;
-                normals[i][1] /= length;
-                normals[i][2] /= length;
-            }
-            else {
-                normals[i] = { 0.0f, 1.0f, 0.0f };
-            }
-        }
+    if (wireframeMode) {
+        glEnable(GL_LIGHTING);
     }
 }
 
-void OpenGLVisualizer::calculateTriangleNormal(int i1, int j1, int i2, int j2, int i3, int j3,
+void OpenGLVisualizer::calculateQuadNormal(float x1, float y1, float z1,
+    float x2, float y2, float z2,
+    float x3, float y3, float z3,
+    float x4, float y4, float z4,
     float& nx, float& ny, float& nz) {
+    // Вычисляем нормаль для квада как среднее двух треугольников
+    float nx1, ny1, nz1, nx2, ny2, nz2;
 
-    double x1 = (j1 - depthData[0].size() / 2.0) * 0.1;
-    double y1 = depthData[i1][j1] * 0.05;
-    double z1 = (i1 - depthData.size() / 2.0) * 0.1;
+    // Нормаль первого треугольника (v1, v2, v3)
+    float u1x = x2 - x1;
+    float u1y = y2 - y1;
+    float u1z = z2 - z1;
 
-    double x2 = (j2 - depthData[0].size() / 2.0) * 0.1;
-    double y2 = depthData[i2][j2] * 0.05;
-    double z2 = (i2 - depthData.size() / 2.0) * 0.1;
+    float v1x = x3 - x1;
+    float v1y = y3 - y1;
+    float v1z = z3 - z1;
 
-    double x3 = (j3 - depthData[0].size() / 2.0) * 0.1;
-    double y3 = depthData[i3][j3] * 0.05;
-    double z3 = (i3 - depthData.size() / 2.0) * 0.1;
+    nx1 = u1y * v1z - u1z * v1y;
+    ny1 = u1z * v1x - u1x * v1z;
+    nz1 = u1x * v1y - u1y * v1x;
 
-    float v1x = static_cast<float>(x2 - x1);
-    float v1y = static_cast<float>(y2 - y1);
-    float v1z = static_cast<float>(z2 - z1);
+    // Нормаль второго треугольника (v1, v3, v4)
+    float u2x = x3 - x1;
+    float u2y = y3 - y1;
+    float u2z = z3 - z1;
 
-    float v2x = static_cast<float>(x3 - x1);
-    float v2y = static_cast<float>(y3 - y1);
-    float v2z = static_cast<float>(z3 - z1);
+    float v2x = x4 - x1;
+    float v2y = y4 - y1;
+    float v2z = z4 - z1;
 
-    nx = v1y * v2z - v1z * v2y;
-    ny = v1z * v2x - v1x * v2z;
-    nz = v1x * v2y - v1y * v2x;
+    nx2 = u2y * v2z - u2z * v2y;
+    ny2 = u2z * v2x - u2x * v2z;
+    nz2 = u2x * v2y - u2y * v2x;
 
-    float length = sqrt(nx * nx + ny * ny + nz * nz);
+    // Среднее значение
+    nx = (nx1 + nx2) / 2.0f;
+    ny = (ny1 + ny2) / 2.0f;
+    nz = (nz1 + nz2) / 2.0f;
+
+    // Нормализация
+    float length = sqrtf(nx * nx + ny * ny + nz * nz);
     if (length > 0.0001f) {
         nx /= length;
         ny /= length;
         nz /= length;
     }
+    else {
+        nx = 0.0f;
+        ny = 1.0f;
+        nz = 0.0f;
+    }
 }
 
 void OpenGLVisualizer::keyboard(unsigned char key, int x, int y) {
     switch (key) {
-    case 'w': case 'W': rotationX += 5.0f; break;
-    case 's': case 'S': rotationX -= 5.0f; break;
-    case 'a': case 'A': rotationY += 5.0f; break;
-    case 'd': case 'D': rotationY -= 5.0f; break;
+    case 'w': case 'W': cameraZ -= 0.5f; break; // Движение вперед
+    case 's': case 'S': cameraZ += 0.5f; break; // Движение назад
+    case 'a': case 'A': cameraX -= 0.5f; break; // Движение влево
+    case 'd': case 'D': cameraX += 0.5f; break; // Движение вправо
+    case 'q': case 'Q': cameraY += 0.5f; break; // Движение вверх
+    case 'e': case 'E': cameraY -= 0.5f; break; // Движение вниз
     case 'r': case 'R': resetView(); break;
-    case 27: exit(0); break;
+    case ' ': wireframeMode = !wireframeMode; break; // Переключение режима
+    case 27: exit(0); break; // ESC для выхода
     }
     glutPostRedisplay();
 }
@@ -362,40 +270,64 @@ void OpenGLVisualizer::specialKeys(int key, int x, int y) {
     glutPostRedisplay();
 }
 
+void OpenGLVisualizer::mouse(int button, int state, int x, int y) {
+    // Будущая реализация вращения мышью
+}
+
+void OpenGLVisualizer::motion(int x, int y) {
+    // Будущая реализация вращения мышью
+}
+
 void OpenGLVisualizer::reshape(int width, int height) {
+    windowWidth = width;
+    windowHeight = height;
+
     glViewport(0, 0, width, height);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(45.0, (double)width / height, 0.1, 100.0);
+    gluPerspective(45.0, (double)width / height, 0.1, 1000.0); // Как в Python примере
     glMatrixMode(GL_MODELVIEW);
 }
 
 void OpenGLVisualizer::setupLighting() {
-    GLfloat light0_position[] = { 3.0f, 10.0f, 3.0f, 1.0f };
-    GLfloat light0_ambient[] = { 0.3f, 0.3f, 0.3f, 1.0f };
-    GLfloat light0_diffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    GLfloat light0_specular[] = { 0.8f, 0.8f, 0.8f, 1.0f };
+    // Освещение на основе конфигурации
+    GLfloat light_position[] = {
+        currentConfig.light_direction.x * 10.0f,
+        currentConfig.light_direction.y * 10.0f,
+        currentConfig.light_direction.z * 10.0f,
+        1.0f
+    };
 
-    glLightfv(GL_LIGHT0, GL_POSITION, light0_position);
-    glLightfv(GL_LIGHT0, GL_AMBIENT, light0_ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, light0_diffuse);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, light0_specular);
+    GLfloat light_ambient[] = {
+        currentConfig.ambient_intensity,
+        currentConfig.ambient_intensity,
+        currentConfig.ambient_intensity,
+        1.0f
+    };
 
-    GLfloat light1_position[] = { -3.0f, 5.0f, -3.0f, 1.0f };
-    GLfloat light1_diffuse[] = { 0.6f, 0.6f, 0.6f, 1.0f };
-    GLfloat light1_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+    GLfloat light_diffuse[] = {
+        currentConfig.light_intensity,
+        currentConfig.light_intensity,
+        currentConfig.light_intensity,
+        1.0f
+    };
 
-    glLightfv(GL_LIGHT1, GL_POSITION, light1_position);
-    glLightfv(GL_LIGHT1, GL_AMBIENT, light1_ambient);
-    glLightfv(GL_LIGHT1, GL_DIFFUSE, light1_diffuse);
+    GLfloat light_specular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+    glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
 
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
-    glEnable(GL_LIGHT1);
     glEnable(GL_NORMALIZE);
+    glEnable(GL_DEPTH_TEST);
+    glShadeModel(GL_SMOOTH);
 }
 
 void OpenGLVisualizer::setupMaterial() {
+    // Настройка материала на основе конфигурации
     GLfloat material_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
     GLfloat material_diffuse[] = {
         currentConfig.material_color.x,
@@ -403,8 +335,32 @@ void OpenGLVisualizer::setupMaterial() {
         currentConfig.material_color.z,
         1.0f
     };
-    GLfloat material_specular[] = { 0.5f, 0.5f, 0.5f, 1.0f };
-    GLfloat material_shininess[] = { currentConfig.material_shininess };
+
+    // Разные настройки для разных моделей отражения
+    GLfloat material_specular[4];
+    GLfloat material_shininess[1];
+
+    switch (currentConfig.reflection_model) {
+    case 0: // Ламберт
+        material_specular[0] = 0.0f; material_specular[1] = 0.0f;
+        material_specular[2] = 0.0f; material_specular[3] = 1.0f;
+        material_shininess[0] = 0.0f;
+        break;
+    case 1: // Фонга-Блинна
+        material_specular[0] = 0.5f; material_specular[1] = 0.5f;
+        material_specular[2] = 0.5f; material_specular[3] = 1.0f;
+        material_shininess[0] = currentConfig.phong_shininess;
+        break;
+    case 2: // Торренса-Сперроу
+        material_specular[0] = 0.8f; material_specular[1] = 0.8f;
+        material_specular[2] = 0.8f; material_specular[3] = 1.0f;
+        material_shininess[0] = currentConfig.material_shininess * 2.0f;
+        break;
+    default:
+        material_specular[0] = 0.5f; material_specular[1] = 0.5f;
+        material_specular[2] = 0.5f; material_specular[3] = 1.0f;
+        material_shininess[0] = 32.0f;
+    }
 
     glMaterialfv(GL_FRONT, GL_AMBIENT, material_ambient);
     glMaterialfv(GL_FRONT, GL_DIFFUSE, material_diffuse);
@@ -412,39 +368,19 @@ void OpenGLVisualizer::setupMaterial() {
     glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess);
 }
 
-void OpenGLVisualizer::setupLightingForModel(int reflectionModel) {
-    // Настройка освещения в зависимости от модели отражения
-    switch (reflectionModel) {
-    case 0: // Ламберт
-    {
-        GLfloat light_specular[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-        glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
-        glMaterialf(GL_FRONT, GL_SHININESS, 0.0f);
-    }
-    break;
-
-    case 1: // Фонга-Блинна
-    {
-        GLfloat light_specular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-        glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
-        glMaterialf(GL_FRONT, GL_SHININESS, currentConfig.material_shininess);
-    }
-    break;
-
-    case 2: // Торренса-Сперроу
-    {
-        GLfloat light_specular[] = { 0.8f, 0.8f, 0.8f, 1.0f };
-        glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
-        glMaterialf(GL_FRONT, GL_SHININESS, currentConfig.material_shininess * 0.5f);
-    }
-    break;
-    }
-}
-
 void OpenGLVisualizer::resetView() {
     rotationX = 0.0f;
     rotationY = 0.0f;
     zoom = 1.0f;
+    cameraX = 0.0f;
+    cameraY = 0.0f;
+    cameraZ = 5.0f; // Как в Python примере (камера на расстоянии 5)
+    lookAtX = 0.0f;
+    lookAtY = 0.0f;
+    lookAtZ = 0.0f;
+    upX = 0.0f;
+    upY = 1.0f;
+    upZ = 0.0f;
     showAxes = true;
     wireframeMode = false;
 }
@@ -453,9 +389,11 @@ void OpenGLVisualizer::printControls() {
     setlocale(LC_ALL, "Russian");
 
     cout << "\n=== Управление в OpenGL ===" << endl;
-    cout << "Стрелки Вверх/Вниз - вращение по X" << endl;
-    cout << "Стрелки Влево/Вправо - вращение по Y" << endl;
-    cout << "W/S/A/D - вращение модели" << endl;
+    cout << "W/S - движение вперед/назад" << endl;
+    cout << "A/D - движение влево/вправо" << endl;
+    cout << "Q/E - движение вверх/вниз" << endl;
+    cout << "Стрелки - вращение модели" << endl;
+    cout << "Пробел - переключение каркасного режима" << endl;
     cout << "R - сброс вида" << endl;
     cout << "ESC - выход" << endl;
     cout << "===========================\n" << endl;
@@ -476,28 +414,38 @@ void OpenGLVisualizer::initialize(int argc, char** argv,
 
     cout << "Данные загружены: " << depthData.size() << " x " << depthData[0].size() << endl;
 
-    // Инициализация GLUT
+    // Инициализация GLUT как в Python примере
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
-    glutInitWindowSize(1000, 700);
+    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
+    glutInitWindowSize(windowWidth, windowHeight);
     glutInitWindowPosition(100, 100);
-    glutCreateWindow("3D Depth Map Viewer - Лабораторная работа 4");
+    glutCreateWindow("3D Depth Map Visualization - Лабораторная работа 4");
 
     // Настройка OpenGL
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_NORMALIZE);
     glShadeModel(GL_SMOOTH);
 
-    // Цвет фона
-    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    // Цвет фона черный как в Python примере
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Сохраняем конфигурацию
     currentConfig = config;
 
-    // Базовая настройка освещения
+    // Настройка камеры на основе конфигурации
+    cameraX = config.viewer_position.x;
+    cameraY = config.viewer_position.y;
+    cameraZ = config.viewer_position.z;
+    lookAtX = 0.0f;
+    lookAtY = 0.0f;
+    lookAtZ = 0.0f;
+    upX = 0.0f;
+    upY = 1.0f;
+    upZ = 0.0f;
+
+    // Настройка освещения и материала
     setupLighting();
     setupMaterial();
-    setupLightingForModel(config.reflection_model);
 
     // Устанавливаем режим каркаса если нужно
     wireframeMode = config.wireframe_mode;
@@ -507,7 +455,7 @@ void OpenGLVisualizer::initialize(int argc, char** argv,
     switch (config.reflection_model) {
     case 0: cout << "Ламберт" << endl; break;
     case 1: cout << "Фонга-Блинна" << endl; break;
-    case 2: cout << "Торенса-Сперроу" << endl; break;
+    case 2: cout << "Торренса-Сперроу" << endl; break;
     default: cout << "Неизвестно" << endl; break;
     }
 
@@ -516,9 +464,11 @@ void OpenGLVisualizer::initialize(int argc, char** argv,
     glutKeyboardFunc(keyboard);
     glutSpecialFunc(specialKeys);
     glutReshapeFunc(reshape);
+    glutMouseFunc(mouse);
+    glutMotionFunc(motion);
 
     cout << "OpenGL визуализация инициализирована!" << endl;
-    cout << "Обработка пропусков для нулевых глубин активирована" << endl;
+    cout << "Размер окна: " << windowWidth << "x" << windowHeight << endl;
 }
 
 void OpenGLVisualizer::run() {
